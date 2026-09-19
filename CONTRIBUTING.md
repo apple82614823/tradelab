@@ -4,6 +4,8 @@ Please start with a small, reproducible issue or a focused pull request.
 There is no promise of a particular response time.
 
 1. Run the unittest command in the README before and after your change.
+   CI runs the same complete discovery in four concurrent,
+   module-preserving shards.
 2. Add a regression test for a bug fix. Use generated data and mocked exchange
    responses; never include a real account, transaction history, or API secret.
 3. Explain what changed, why, and which interpreter/OS you tested.

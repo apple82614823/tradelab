@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   unittest:
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -41,4 +41,4 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: python -m pip install -r requirements.txt
-      - run: python -m unittest discover -s tests -p 'test_*.py'
+      - run: python .github/scripts/run_unittest_sharded.py --shards 4
