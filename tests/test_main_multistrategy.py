@@ -316,45 +316,63 @@ class MainMultiStrategyRoutingTests(unittest.TestCase):
                     assert_entry_window_open(candidate_plan, deadline_ms)
 
     def test_shared_strategy_kline_generation_is_bounded_parallel_and_exact(self):
-        class TimedClient:
+        class CoordinatedClient:
             def __init__(self):
                 self.lock = threading.Lock()
                 self.active = 0
                 self.max_active = 0
+                self.completed = 0
                 self.calls = []
+                self.parallel_ready = threading.Event()
+                self.release = threading.Event()
+                self.wait_timed_out = threading.Event()
 
             def get_klines(self, symbol):
                 with self.lock:
                     self.active += 1
                     self.max_active = max(self.max_active, self.active)
                     self.calls.append(symbol)
+                    if self.active == 10:
+                        self.parallel_ready.set()
+                        self.release.set()
                 try:
-                    time.sleep(0.02)
+                    if not self.release.wait(timeout=5):
+                        self.wait_timed_out.set()
+                        self.release.set()
+                        raise AssertionError(
+                            "Kline workers did not overlap within the timeout"
+                        )
                     return [[symbol]]
                 finally:
                     with self.lock:
                         self.active -= 1
+                        self.completed += 1
 
-        client = TimedClient()
+        client = CoordinatedClient()
         bot = TradingBot.__new__(TradingBot)
         bot.client = client
         bot._kline_request_slots = threading.BoundedSemaphore(10)
         symbols = tuple("S%03dUSDT" % index for index in range(100))
 
-        started = time.perf_counter()
         rows, observed_at, failures = bot._fetch_strategy_kline_generation(
             symbols
         )
-        elapsed = time.perf_counter() - started
 
         self.assertEqual(set(rows), set(symbols))
         self.assertEqual(set(observed_at), set(symbols))
         self.assertEqual(failures, ())
         self.assertEqual(len(client.calls), 100)
         self.assertEqual(set(client.calls), set(symbols))
-        self.assertGreaterEqual(client.max_active, 2)
+        self.assertTrue(client.parallel_ready.is_set())
+        self.assertFalse(client.wait_timed_out.is_set())
+        self.assertEqual(client.max_active, 10)
         self.assertLessEqual(client.max_active, 10)
-        self.assertLess(elapsed, 0.8)
+        self.assertEqual(client.completed, 100)
+        self.assertEqual(client.active, 0)
+        self.assertFalse(any(
+            thread.name.startswith("strategy-kline")
+            for thread in threading.enumerate()
+        ))
 
     def test_shared_strategy_kline_generation_reports_exact_failure_and_closes(self):
         class FailingClient:

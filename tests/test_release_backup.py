@@ -88,17 +88,48 @@ class ReleaseBackupTests(unittest.TestCase):
         current = app_root / "current"
         for directory in (backup_root, state, data, logs, current):
             directory.mkdir(parents=True, mode=0o700)
+        git_no_auto_maintenance = [
+            "-c",
+            "maintenance.auto=false",
+            "-c",
+            "maintenance.autoDetach=false",
+            "-c",
+            "gc.auto=0",
+            "-c",
+            "gc.autoDetach=false",
+        ]
         subprocess.run(
-            ["git", "init", "-q", str(current)],
+            ["git", *git_no_auto_maintenance, "init", "-q", str(current)],
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
+        for key, value in (
+            ("maintenance.auto", "false"),
+            ("maintenance.autoDetach", "false"),
+            ("gc.auto", "0"),
+            ("gc.autoDetach", "false"),
+        ):
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(current),
+                    "config",
+                    "--local",
+                    key,
+                    value,
+                ],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
         subprocess.run(
             [
                 "git",
                 "-C",
                 str(current),
+                *git_no_auto_maintenance,
                 "-c",
                 "user.name=Release Test",
                 "-c",
